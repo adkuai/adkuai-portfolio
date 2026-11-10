@@ -7,38 +7,87 @@ interface ViewersCountProps {
   className?: string;
 }
 
-export function ViewersCount({ initialCount = 1428, className = "" }: ViewersCountProps) {
+export function ViewersCount({ initialCount = 1447, className = "" }: ViewersCountProps) {
   const [count, setCount] = useState<number>(initialCount);
-  const hasFetched = useRef(false);
+  const hasRun = useRef(false);
 
   useEffect(() => {
-    if (hasFetched.current) return;
-    hasFetched.current = true;
+    // Prevent React 18/19 StrictMode from double-invoking in dev mode
+    if (hasRun.current) return;
+    hasRun.current = true;
 
-    // Send visit notification to increment view count
-    fetch("/api/views", { method: "POST" })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to record view");
-        return res.json();
+    try {
+      // 1. Retrieve or generate a persistent unique ID for this device
+      let deviceId = localStorage.getItem("adkuai_device_id");
+      if (!deviceId) {
+        deviceId = "dev_" + Math.random().toString(36).substring(2, 10) + "_" + Date.now();
+        localStorage.setItem("adkuai_device_id", deviceId);
+      }
+
+      // 2. Check if this device has already visited
+      const alreadyVisited = localStorage.getItem("adkuai_device_visited") === "true";
+
+      if (!alreadyVisited) {
+        // First time this device visits: mark as visited and send deviceId to increment by 1
+        localStorage.setItem("adkuai_device_visited", "true");
+
+        fetch(`/api/views?t=${Date.now()}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+          },
+          cache: "no-store",
+          body: JSON.stringify({ deviceId }),
+        })
+          .then((res) => (res.ok ? res.json() : Promise.reject()))
+          .then((data) => {
+            if (typeof data.count === "number") {
+              setCount(data.count);
+            }
+          })
+          .catch(() => {
+            // Local optimistic fallback
+            setCount((prev) => prev + 1);
+          });
+      } else {
+        // Same device returning: do NOT increment, just fetch the latest count
+        fetch(`/api/views?t=${Date.now()}`, {
+          method: "GET",
+          headers: { "Cache-Control": "no-cache" },
+          cache: "no-store",
+        })
+          .then((res) => (res.ok ? res.json() : Promise.reject()))
+          .then((data) => {
+            if (typeof data.count === "number") {
+              setCount(data.count);
+            }
+          })
+          .catch(() => {});
+      }
+    } catch {
+      // Fallback if localStorage is restricted (e.g. strict private browsing)
+      fetch(`/api/views?t=${Date.now()}`, {
+        method: "GET",
+        cache: "no-store",
       })
-      .then((data) => {
-        if (typeof data.count === "number") {
-          setCount(data.count);
-        }
-      })
-      .catch(() => {
-        // Fallback: increment locally if API is unreachable
-        setCount((prev) => prev + 1);
-      });
+        .then((res) => (res.ok ? res.json() : Promise.reject()))
+        .then((data) => {
+          if (typeof data.count === "number") {
+            setCount(data.count);
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   return (
     <div
       title="Website Views"
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] border border-black/10 dark:border-white/10 bg-zinc-100/90 dark:bg-[#141416] shadow-xs select-none transition-colors hover:border-black/20 dark:hover:border-white/20 ${className}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[5px] border border-black/10 dark:border-white/10 bg-zinc-100/90 dark:bg-[#141416] shadow-xs select-none transition-colors ${className}`}
       aria-label={`Website views: ${count.toLocaleString()}`}
     >
-      {/* Greyish Eye Icon - visible in both light & dark modes */}
+      {/* Greyish Eye Icon - visible in both light & dark views */}
       <svg
         viewBox="0 0 24 24"
         fill="none"
