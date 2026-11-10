@@ -2,13 +2,7 @@ import fs from "fs";
 import path from "path";
 import initialViews from "@/data/views.json";
 
-interface ViewsData {
-  count: number;
-  devices?: string[];
-}
-
-let memoryCount: number = initialViews.count || 1447;
-let memoryDevices: Set<string> = new Set((initialViews as ViewsData).devices || []);
+let memoryCount: number = initialViews.count || 1451;
 
 function getCandidates(): string[] {
   return [
@@ -25,63 +19,40 @@ function resolveFilePath(): string {
   return candidates[0];
 }
 
-function loadFromDisk(): void {
+function loadFromDisk(): number {
   try {
     const filePath = resolveFilePath();
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, "utf-8");
-      const parsed: ViewsData = JSON.parse(content);
+      const parsed = JSON.parse(content);
       if (typeof parsed.count === "number" && !isNaN(parsed.count)) {
-        memoryCount = parsed.count;
-      }
-      if (Array.isArray(parsed.devices)) {
-        memoryDevices = new Set(parsed.devices);
+        memoryCount = Math.max(memoryCount, parsed.count);
       }
     }
-  } catch {
-    // Keep existing memory state on read errors
-  }
-}
-
-export function getViewsCount(): number {
-  loadFromDisk();
+  } catch {}
   return memoryCount;
 }
 
-export function registerDeviceVisit(deviceId?: string): { count: number; isNew: boolean } {
+export function getViewsCount(): number {
+  return loadFromDisk();
+}
+
+export function incrementViewsCount(): number {
+  // Read current count from disk first to ensure we never overwrite an increment
   loadFromDisk();
 
-  // If no device ID provided, do not increment; just return current count
-  if (!deviceId || typeof deviceId !== "string" || deviceId.trim() === "") {
-    return { count: memoryCount, isNew: false };
-  }
-
-  const cleanId = deviceId.trim();
-
-  // If this device has already visited, do NOT increment
-  if (memoryDevices.has(cleanId)) {
-    return { count: memoryCount, isNew: false };
-  }
-
-  // New device: record device ID and increment count by EXACTLY 1
-  memoryDevices.add(cleanId);
+  // Increment by 1
   memoryCount += 1;
 
-  // Persist to disk
+  // Persist immediately to disk
   try {
     const filePath = resolveFilePath();
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    const toSave: ViewsData = {
-      count: memoryCount,
-      devices: Array.from(memoryDevices).slice(-10000), // preserve last 10,000 devices
-    };
-    fs.writeFileSync(filePath, JSON.stringify(toSave, null, 2), "utf-8");
-  } catch {
-    // Gracefully handle read-only environments
-  }
+    fs.writeFileSync(filePath, JSON.stringify({ count: memoryCount }, null, 2), "utf-8");
+  } catch {}
 
-  return { count: memoryCount, isNew: true };
+  return memoryCount;
 }

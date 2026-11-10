@@ -7,51 +7,69 @@ interface ViewersCountProps {
   className?: string;
 }
 
-export function ViewersCount({ initialCount = 1447, className = "" }: ViewersCountProps) {
+export function ViewersCount({ initialCount = 1451, className = "" }: ViewersCountProps) {
+  // Initialize with the highest known count between SSR prop and localStorage
   const [count, setCount] = useState<number>(initialCount);
   const hasRun = useRef(false);
 
   useEffect(() => {
-    // Prevent React 18/19 StrictMode from double-invoking in dev mode
+    // 1. Check localStorage immediately on mount to ensure we never display a lower number
+    try {
+      const cached = localStorage.getItem("adkuai_view_count");
+      if (cached) {
+        const parsed = parseInt(cached, 10);
+        if (!isNaN(parsed) && parsed > initialCount) {
+          setCount(parsed);
+        }
+      }
+    } catch {}
+
+    // Prevent double-execution in React StrictMode
     if (hasRun.current) return;
     hasRun.current = true;
 
+    // Helper to safely update count monotonically (never go backwards)
+    const updateCountSafely = (newVal: number) => {
+      setCount((prev) => {
+        const next = Math.max(prev, newVal);
+        try {
+          localStorage.setItem("adkuai_view_count", String(next));
+        } catch {}
+        return next;
+      });
+    };
+
     try {
-      // 1. Retrieve or generate a persistent unique ID for this device
-      let deviceId = localStorage.getItem("adkuai_device_id");
-      if (!deviceId) {
-        deviceId = "dev_" + Math.random().toString(36).substring(2, 10) + "_" + Date.now();
-        localStorage.setItem("adkuai_device_id", deviceId);
-      }
+      // Check if this browser session has already registered a visit
+      const sessionCounted = sessionStorage.getItem("adkuai_session_counted") === "true";
 
-      // 2. Check if this device has already visited
-      const alreadyVisited = localStorage.getItem("adkuai_device_visited") === "true";
-
-      if (!alreadyVisited) {
-        // First time this device visits: mark as visited and send deviceId to increment by 1
-        localStorage.setItem("adkuai_device_visited", "true");
+      if (!sessionCounted) {
+        // New visit: mark session and increment count by 1 on the server
+        sessionStorage.setItem("adkuai_session_counted", "true");
 
         fetch(`/api/views?t=${Date.now()}`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache",
-          },
+          headers: { "Cache-Control": "no-cache" },
           cache: "no-store",
-          body: JSON.stringify({ deviceId }),
         })
           .then((res) => (res.ok ? res.json() : Promise.reject()))
           .then((data) => {
             if (typeof data.count === "number") {
-              setCount(data.count);
+              updateCountSafely(data.count);
             }
           })
           .catch(() => {
-            // Local optimistic fallback
-            setCount((prev) => prev + 1);
+            // Local fallback increment if server is temporarily unreachable
+            setCount((prev) => {
+              const next = prev + 1;
+              try {
+                localStorage.setItem("adkuai_view_count", String(next));
+              } catch {}
+              return next;
+            });
           });
       } else {
-        // Same device returning: do NOT increment, just fetch the latest count
+        // Same session refresh: fetch latest count without incrementing, never reverting
         fetch(`/api/views?t=${Date.now()}`, {
           method: "GET",
           headers: { "Cache-Control": "no-cache" },
@@ -60,13 +78,13 @@ export function ViewersCount({ initialCount = 1447, className = "" }: ViewersCou
           .then((res) => (res.ok ? res.json() : Promise.reject()))
           .then((data) => {
             if (typeof data.count === "number") {
-              setCount(data.count);
+              updateCountSafely(data.count);
             }
           })
           .catch(() => {});
       }
     } catch {
-      // Fallback if localStorage is restricted (e.g. strict private browsing)
+      // Fallback in case storage is restricted
       fetch(`/api/views?t=${Date.now()}`, {
         method: "GET",
         cache: "no-store",
@@ -74,12 +92,12 @@ export function ViewersCount({ initialCount = 1447, className = "" }: ViewersCou
         .then((res) => (res.ok ? res.json() : Promise.reject()))
         .then((data) => {
           if (typeof data.count === "number") {
-            setCount(data.count);
+            updateCountSafely(data.count);
           }
         })
         .catch(() => {});
     }
-  }, []);
+  }, [initialCount]);
 
   return (
     <div
