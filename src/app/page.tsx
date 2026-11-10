@@ -29,6 +29,8 @@ import Image from "next/image";
 import { SiGithub, SiLeetcode, SiX, SiGmail, SiDiscord } from "react-icons/si";
 import { FaLinkedinIn } from "react-icons/fa6";
 import { MessageSquare } from "lucide-react";
+import { ViewersCount } from "@/components/ViewersCount";
+import { getViewsCount } from "@/lib/views";
 
 
 const lightBannerPlaceholder =
@@ -37,6 +39,7 @@ const darkBannerPlaceholder =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 11'%3E%3Crect width='32' height='11' fill='%23071329'/%3E%3C/svg%3E";
 
 export default async function Home() {
+  const initialViews = getViewsCount();
   const socialProfiles = await getSocialProfiles();
   const guestbook = portfolio.sections.guestbook && portfolio.giscus.repoId
     ? await getGuestbook()
@@ -107,12 +110,16 @@ export default async function Home() {
               </div>
 
               <div className="flex flex-col justify-end pb-1">
-                <h1 className="text-[22px] sm:text-[26px] md:text-[30px] font-bold text-zinc-900 dark:text-zinc-100 tracking-tight leading-none mb-1 [text-shadow:-1.5px_0_0_rgba(0,200,255,0.3),1.5px_0_0_rgba(255,80,0,0.3)] dark:[text-shadow:-1.5px_0_0_rgba(0,200,255,0.6),1.5px_0_0_rgba(255,80,0,0.6)]">
+                <h1 className="text-[22px] sm:text-[26px] md:text-[30px] font-bold text-zinc-900 dark:text-zinc-100 tracking-tight leading-none mb-1.5 [text-shadow:-1.5px_0_0_rgba(0,200,255,0.3),1.5px_0_0_rgba(255,80,0,0.3)] dark:[text-shadow:-1.5px_0_0_rgba(0,200,255,0.6),1.5px_0_0_rgba(255,80,0,0.6)]">
                   {portfolio.name}
                 </h1>
-                <p className="text-[13px] sm:text-[14px] font-medium text-zinc-500 dark:text-zinc-400">
-                  {portfolio.location}
-                </p>
+                <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+                  <p className="text-[13px] sm:text-[14px] font-medium text-zinc-500 dark:text-zinc-400">
+                    {portfolio.location}
+                  </p>
+                  <span className="text-zinc-300 dark:text-zinc-700 text-[10px] hidden sm:inline" aria-hidden="true">•</span>
+                  <ViewersCount initialCount={initialViews} />
+                </div>
               </div>
             </div>
 
