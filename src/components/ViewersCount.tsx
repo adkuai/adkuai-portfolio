@@ -7,13 +7,12 @@ interface ViewersCountProps {
   className?: string;
 }
 
-export function ViewersCount({ initialCount = 1451, className = "" }: ViewersCountProps) {
-  // Initialize with the highest known count between SSR prop and localStorage
+export function ViewersCount({ initialCount = 1453, className = "" }: ViewersCountProps) {
   const [count, setCount] = useState<number>(initialCount);
   const hasRun = useRef(false);
 
   useEffect(() => {
-    // 1. Check localStorage immediately on mount to ensure we never display a lower number
+    // 1. Check cached count on mount to avoid displaying a stale lower number
     try {
       const cached = localStorage.getItem("adkuai_view_count");
       if (cached) {
@@ -24,79 +23,32 @@ export function ViewersCount({ initialCount = 1451, className = "" }: ViewersCou
       }
     } catch {}
 
-    // Prevent double-execution in React StrictMode
+    // Prevent double-invocation in React StrictMode
     if (hasRun.current) return;
     hasRun.current = true;
 
-    // Helper to safely update count monotonically (never go backwards)
-    const updateCountSafely = (newVal: number) => {
-      setCount((prev) => {
-        const next = Math.max(prev, newVal);
-        try {
-          localStorage.setItem("adkuai_view_count", String(next));
-        } catch {}
-        return next;
-      });
-    };
-
-    try {
-      // Check if this browser session has already registered a visit
-      const sessionCounted = sessionStorage.getItem("adkuai_session_counted") === "true";
-
-      if (!sessionCounted) {
-        // New visit: mark session and increment count by 1 on the server
-        sessionStorage.setItem("adkuai_session_counted", "true");
-
-        fetch(`/api/views?t=${Date.now()}`, {
-          method: "POST",
-          headers: { "Cache-Control": "no-cache" },
-          cache: "no-store",
-        })
-          .then((res) => (res.ok ? res.json() : Promise.reject()))
-          .then((data) => {
-            if (typeof data.count === "number") {
-              updateCountSafely(data.count);
-            }
-          })
-          .catch(() => {
-            // Local fallback increment if server is temporarily unreachable
-            setCount((prev) => {
-              const next = prev + 1;
-              try {
-                localStorage.setItem("adkuai_view_count", String(next));
-              } catch {}
-              return next;
-            });
+    // 2. Send request to server - server strictly checks the visitor's IP address
+    // If it's a new IP address, server increments by 1; if same IP, server returns current count.
+    fetch(`/api/views?t=${Date.now()}`, {
+      method: "POST",
+      headers: { "Cache-Control": "no-cache" },
+      cache: "no-store",
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => {
+        if (typeof data.count === "number" && !isNaN(data.count)) {
+          setCount((prev) => {
+            const next = Math.max(prev, data.count);
+            try {
+              localStorage.setItem("adkuai_view_count", String(next));
+            } catch {}
+            return next;
           });
-      } else {
-        // Same session refresh: fetch latest count without incrementing, never reverting
-        fetch(`/api/views?t=${Date.now()}`, {
-          method: "GET",
-          headers: { "Cache-Control": "no-cache" },
-          cache: "no-store",
-        })
-          .then((res) => (res.ok ? res.json() : Promise.reject()))
-          .then((data) => {
-            if (typeof data.count === "number") {
-              updateCountSafely(data.count);
-            }
-          })
-          .catch(() => {});
-      }
-    } catch {
-      // Fallback in case storage is restricted
-      fetch(`/api/views?t=${Date.now()}`, {
-        method: "GET",
-        cache: "no-store",
+        }
       })
-        .then((res) => (res.ok ? res.json() : Promise.reject()))
-        .then((data) => {
-          if (typeof data.count === "number") {
-            updateCountSafely(data.count);
-          }
-        })
-        .catch(() => {});
-    }
+      .catch(() => {
+        // Keep current count without arbitrary guesswork
+      });
   }, [initialCount]);
 
   return (

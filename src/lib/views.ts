@@ -1,8 +1,15 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import initialViews from "@/data/views.json";
 
-let memoryCount: number = initialViews.count || 1451;
+interface ViewsData {
+  count: number;
+  ips?: string[];
+}
+
+let memoryCount: number = initialViews.count || 1453;
+let memoryIps: Set<string> = new Set((initialViews as ViewsData).ips || []);
 
 function getCandidates(): string[] {
   return [
@@ -19,40 +26,70 @@ function resolveFilePath(): string {
   return candidates[0];
 }
 
-function loadFromDisk(): number {
+function loadFromDisk(): void {
   try {
     const filePath = resolveFilePath();
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, "utf-8");
-      const parsed = JSON.parse(content);
+      const parsed: ViewsData = JSON.parse(content);
       if (typeof parsed.count === "number" && !isNaN(parsed.count)) {
         memoryCount = Math.max(memoryCount, parsed.count);
       }
+      if (Array.isArray(parsed.ips)) {
+        memoryIps = new Set(parsed.ips);
+      }
     }
   } catch {}
-  return memoryCount;
+}
+
+function normalizeIp(ip: string): string {
+  const trimmed = ip.trim().toLowerCase();
+  if (trimmed === "::1" || trimmed === "::ffff:127.0.0.1" || trimmed === "localhost") {
+    return "127.0.0.1";
+  }
+  return trimmed;
+}
+
+function hashIp(ip: string): string {
+  // Hash IP address with SHA-256 for privacy and uniform storage
+  return crypto.createHash("sha256").update(ip).digest("hex").slice(0, 16);
 }
 
 export function getViewsCount(): number {
-  return loadFromDisk();
+  loadFromDisk();
+  return memoryCount;
 }
 
-export function incrementViewsCount(): number {
-  // Read current count from disk first to ensure we never overwrite an increment
+export function recordIpView(rawIp: string): { count: number; isNew: boolean } {
   loadFromDisk();
 
-  // Increment by 1
+  const normalized = normalizeIp(rawIp || "127.0.0.1");
+  const ipHash = hashIp(normalized);
+
+  // If this IP address has already opened the website, do NOT increment
+  if (memoryIps.has(ipHash)) {
+    return { count: memoryCount, isNew: false };
+  }
+
+  // New IP address: register it and strictly increment by EXACTLY 1
+  memoryIps.add(ipHash);
   memoryCount += 1;
 
-  // Persist immediately to disk
+  // Persist directly to disk
   try {
     const filePath = resolveFilePath();
     const dir = path.dirname(filePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    fs.writeFileSync(filePath, JSON.stringify({ count: memoryCount }, null, 2), "utf-8");
-  } catch {}
+    const toSave: ViewsData = {
+      count: memoryCount,
+      ips: Array.from(memoryIps).slice(-15000), // preserve last 15,000 unique IP hashes
+    };
+    fs.writeFileSync(filePath, JSON.stringify(toSave, null, 2), "utf-8");
+  } catch {
+    // Gracefully handle read-only filesystems in serverless
+  }
 
-  return memoryCount;
+  return { count: memoryCount, isNew: true };
 }
