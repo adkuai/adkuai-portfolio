@@ -37,13 +37,10 @@ export function ViewersCount({ initialCount = 1453, className = "" }: ViewersCou
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((data) => {
         if (typeof data.count === "number" && !isNaN(data.count)) {
-          setCount((prev) => {
-            const next = Math.max(prev, data.count);
-            try {
-              localStorage.setItem("adkuai_view_count", String(next));
-            } catch {}
-            return next;
-          });
+          setCount(data.count);
+          try {
+            localStorage.setItem("adkuai_view_count", String(data.count));
+          } catch {}
         }
       })
       .catch(() => {

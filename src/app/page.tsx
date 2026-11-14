@@ -39,7 +39,7 @@ const darkBannerPlaceholder =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 11'%3E%3Crect width='32' height='11' fill='%23071329'/%3E%3C/svg%3E";
 
 export default async function Home() {
-  const initialViews = getViewsCount();
+  const initialViews = await getViewsCount();
   const socialProfiles = await getSocialProfiles();
   const guestbook = portfolio.sections.guestbook && portfolio.giscus.repoId
     ? await getGuestbook()

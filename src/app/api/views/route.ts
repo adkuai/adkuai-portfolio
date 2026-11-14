@@ -35,12 +35,12 @@ function extractClientIp(request: NextRequest): string {
 }
 
 export async function GET() {
-  const count = getViewsCount();
+  const count = await getViewsCount();
   return NextResponse.json({ count }, { headers: noCacheHeaders });
 }
 
 export async function POST(request: NextRequest) {
   const ip = extractClientIp(request);
-  const result = recordIpView(ip);
+  const result = await recordIpView(ip);
   return NextResponse.json(result, { headers: noCacheHeaders });
 }
